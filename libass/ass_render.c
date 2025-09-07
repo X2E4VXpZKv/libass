@@ -243,22 +243,14 @@ static double x2scr_pos(ASS_Renderer *render_priv, double x)
     return x * render_priv->frame_content_width / render_priv->par_scale_x / render_priv->track->PlayResX +
         render_priv->settings.left_margin;
 }
-static double x2scr_left(RenderContext *state, double x)
+static double x2scr(RenderContext *state, double x)
 {
     ASS_Renderer *render_priv = state->renderer;
+    double aspectcorrection = ((double)render_priv->width / render_priv->height) / ((double)render_priv->track->PlayResX / render_priv->track->PlayResY);
     if (state->explicit || !render_priv->settings.use_margins)
         return x2scr_pos(render_priv, x);
-    return x * render_priv->fit_width / render_priv->par_scale_x /
-        render_priv->track->PlayResX;
-}
-static double x2scr_right(RenderContext *state, double x)
-{
-    ASS_Renderer *render_priv = state->renderer;
-    if (state->explicit || !render_priv->settings.use_margins)
-        return x2scr_pos(render_priv, x);
-    return x * render_priv->fit_width / render_priv->par_scale_x /
-        render_priv->track->PlayResX +
-        (render_priv->width - render_priv->fit_width);
+    return x * render_priv->width / render_priv->par_scale_x /
+        (render_priv->track->PlayResX * aspectcorrection);
 }
 static double x2scr_pos_scaled(ASS_Renderer *render_priv, double x)
 {
@@ -278,29 +270,8 @@ static double y2scr(RenderContext *state, double y)
     ASS_Renderer *render_priv = state->renderer;
     if (state->explicit || !render_priv->settings.use_margins)
         return y2scr_pos(render_priv, y);
-    return y * render_priv->fit_height /
-        render_priv->track->PlayResY +
-        (render_priv->height - render_priv->fit_height) * 0.5;
-}
-
-// the same for toptitles
-static double y2scr_top(RenderContext *state, double y)
-{
-    ASS_Renderer *render_priv = state->renderer;
-    if (state->explicit || !render_priv->settings.use_margins)
-        return y2scr_pos(render_priv, y);
-    return y * render_priv->fit_height /
+    return y * render_priv->height /
         render_priv->track->PlayResY;
-}
-// the same for subtitles
-static double y2scr_sub(RenderContext *state, double y)
-{
-    ASS_Renderer *render_priv = state->renderer;
-    if (state->explicit || !render_priv->settings.use_margins)
-        return y2scr_pos(render_priv, y);
-    return y * render_priv->fit_height /
-        render_priv->track->PlayResY +
-        (render_priv->height - render_priv->fit_height);
 }
 
 /*
@@ -2875,9 +2846,11 @@ ass_render_event(RenderContext *state, ASS_Event *event,
         (event->MarginV) ? event->MarginV : state->style->MarginV;
 
     // calculate max length of a line
+    double aspectcorrection = state->explicit || !render_priv->settings.use_margins ?
+        1 : ((double)render_priv->width / render_priv->height) / ((double)render_priv->track->PlayResX / render_priv->track->PlayResY);
     double max_text_width =
-        x2scr_right(state, render_priv->track->PlayResX - MarginR) -
-        x2scr_left(state, MarginL);
+        x2scr(state, render_priv->track->PlayResX * aspectcorrection - MarginR) -
+        x2scr(state, MarginL);
 
     // wrap lines
     wrap_lines_smart(state, max_text_width);
@@ -2923,7 +2896,7 @@ ass_render_event(RenderContext *state, ASS_Event *event,
                 x2scr_pos(render_priv, state->scroll_shift) -
                 (bbox.x_max - bbox.x_min);
     } else if (!(state->evt_type & EVENT_POSITIONED)) {
-        device_x = x2scr_left(state, MarginL);
+        device_x = x2scr(state, MarginL);
     }
 
     // y coordinate
@@ -2943,7 +2916,7 @@ ass_render_event(RenderContext *state, ASS_Event *event,
     } else if (!(state->evt_type & EVENT_POSITIONED)) {
         if (valign == VALIGN_TOP) {     // toptitle
             device_y =
-                y2scr_top(state,
+                y2scr(state,
                           MarginV) + text_info->lines[0].asc;
         } else if (valign == VALIGN_CENTER) {   // midtitle
             double scr_y =
@@ -2957,9 +2930,9 @@ ass_render_event(RenderContext *state, ASS_Event *event,
                 ass_msg(render_priv->library, MSGL_V,
                        "Invalid valign, assuming 0 (subtitle)");
             scr_bottom =
-                y2scr_sub(state,
+                y2scr(state,
                           render_priv->track->PlayResY - MarginV);
-            scr_top = y2scr_top(state, 0); //xxx not always 0?
+            scr_top = y2scr(state, 0); //xxx not always 0?
             device_y = scr_bottom + (scr_top - scr_bottom) * line_pos / 100.0;
             device_y -= text_info->height;
             device_y += text_info->lines[0].asc;
